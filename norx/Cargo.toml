@@ -1,0 +1,26 @@
+[package]
+name = "norx-passwd"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause"
+publish = false
+
+[dependencies]
+norx-userdb = { path = "../../userdb/norx" }
+userspace = { path = "../../userspace/rust" }
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "passwd-smoke"
+path = "src/bin/passwd-smoke.rs"
+test = false
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
