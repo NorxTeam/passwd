@@ -16,7 +16,7 @@ use userspace::syscall;
 
 const HASH: &[u8] = b"$argon2id$v=19$m=65536,t=3,p=1$c2FsdFNhbXBsZQ$ZGlnaWVzdFNhbXBsZQ";
 const NEW_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$bmV3c2FsdFNhbXBsZQ$bmV3ZGlnaWVzdFNhbXBsZQ";
-const RESET_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$cmVzZXRzYW1wbGU$cmVzZXRkaWdlc3Q";
+const RESET_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$cmVzZXRzYW1wbGU$cmVzZXRkaWdlc3QxMjM=";
 const SEED: &[u8] = b"NORX-USERDB 1\nu:root:0:0:0:256:/root:/bin/nsh:$argon2id$v=19$m=65536,t=3,p=1$c2FsdFNhbXBsZQ$ZGlnaWVzdFNhbXBsZQ\nu:alice:1000:1000:0:0:/users/alice:/bin/nsh:$argon2id$v=19$m=65536,t=3,p=1$c2FsdFNhbXBsZQ$ZGlnaWVzdFNhbXBsZQ\ng:users:1000:alice\n";
 
 #[panic_handler]
