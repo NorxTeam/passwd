@@ -17,12 +17,11 @@ maintained_fork = "https://github.com/NorxTeam/passwd.git"
 
 [build]
 script = "norx/scripts/build.py"
-targets = ["x86_64-unknown-norx", "aarch64-unknown-norx"]
+targets = ["aarch64-unknown-norx"]
 dependencies = ["userdb", "userspace"]
 
 [outputs]
 files = [
-  "tests/passwd/x86_64-unknown-norx/passwd-smoke.elf",
   "tests/passwd/aarch64-unknown-norx/passwd-smoke.elf",
   "var/lib/passwd/manifest.toml",
 ]

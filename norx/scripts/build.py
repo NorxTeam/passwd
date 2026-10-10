@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and stage the Norx passwd contract smoke ELF for both targets."""
+"""Build and stage the Norx passwd contract smoke ELF for the native ARM64 target."""
 
 from __future__ import annotations
 
@@ -64,7 +64,6 @@ def main() -> int:
     rootfs = Path(os.environ.get("NORX_ROOTFS", REPO_ROOT / "test-rootfs"))
     results: dict[str, str] = {}
     for target_name, target_info in (
-        ("x86_64", abi["targets"]["x86_64"]),
         ("aarch64", abi["targets"]["aarch64"]),
     ):
         target_dir = PASSWD_ROOT / "build" / target_name
