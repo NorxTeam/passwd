@@ -34,6 +34,7 @@ pub enum PasswdError {
     StorageUnavailable,
     StorageBusy,
     StorageCorrupt,
+    CommittedButUnlockFailed,
 }
 
 pub struct PasswdEngine {
@@ -164,6 +165,7 @@ fn map_storage_error(error: StorageError) -> PasswdError {
     match error {
         StorageError::Busy => PasswdError::StorageBusy,
         StorageError::Corrupt => PasswdError::StorageCorrupt,
+        StorageError::CommittedButUnlockFailed => PasswdError::CommittedButUnlockFailed,
         StorageError::Missing | StorageError::Unavailable | StorageError::TooLarge => {
             PasswdError::StorageUnavailable
         }
@@ -175,10 +177,10 @@ mod tests {
     use super::*;
     use alloc::string::String;
 
-    const HASH: &[u8] = b"$argon2id$v=19$m=65536,t=3,p=1$c2FsdFNhbXBsZQ$ZGlnaWVzdFNhbXBsZQ";
+    const HASH: &[u8] = b"$argon2id$v=19$m=65536,t=3,p=1$MDEyMzQ1Njc4OWFiY2RlZg$MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
     const NEW_HASH: &str =
-        "$argon2id$v=19$m=65536,t=3,p=1$bmV3c2FsdFNhbXBsZQ$bmV3ZGlnaWVzdFNhbXBsZQ";
-    const DATABASE: &[u8] = b"NORX-USERDB 1\nu:alice:1000:1000:0:0:/users/alice:/bin/nsh:$argon2id$v=19$m=65536,t=3,p=1$c2FsdFNhbXBsZQ$ZGlnaWVzdFNhbXBsZQ\ng:users:1000:alice\n";
+        "$argon2id$v=19$m=65536,t=3,p=1$bmV3LXNhbHQtdmFsdWUhIQ$bmV3LWRpZ2VzdC12YWx1ZS0wMTIzNDU2Nzg5YWJjZGU";
+    const DATABASE: &[u8] = b"NORX-USERDB 1\nu:alice:1000:1000:0:0:/users/alice:/bin/nsh:$argon2id$v=19$m=65536,t=3,p=1$MDEyMzQ1Njc4OWFiY2RlZg$MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY\ng:users:1000:alice\n";
 
     struct Verifier;
     impl PasswordVerifier for Verifier {
@@ -255,5 +257,85 @@ mod tests {
             max_length: 129,
         })
         .is_err());
+    }
+
+    #[test]
+    fn commit_propagates_committed_but_unlock_failed_for_reconciliation() {
+        struct Storage {
+            committed: Option<Vec<u8>>,
+            temporary: Option<Vec<u8>>,
+            locked: bool,
+            fail_unlock: bool,
+        }
+
+        impl AtomicStorage for Storage {
+            fn read(&mut self, path: &[u8], output: &mut Vec<u8>) -> Result<(), StorageError> {
+                let source = if path == b"tmp" {
+                    self.temporary.as_ref()
+                } else {
+                    self.committed.as_ref()
+                }
+                .ok_or(StorageError::Missing)?;
+                output.extend_from_slice(source);
+                Ok(())
+            }
+
+            fn lock(&mut self) -> Result<(), StorageError> {
+                if self.locked {
+                    Err(StorageError::Busy)
+                } else {
+                    self.locked = true;
+                    Ok(())
+                }
+            }
+
+            fn write_temp(&mut self, _path: &[u8], contents: &[u8]) -> Result<(), StorageError> {
+                self.temporary = Some(contents.to_vec());
+                Ok(())
+            }
+
+            fn sync_file(&mut self, _path: &[u8]) -> Result<(), StorageError> {
+                Ok(())
+            }
+
+            fn replace(
+                &mut self,
+                _temp_path: &[u8],
+                _committed_path: &[u8],
+            ) -> Result<(), StorageError> {
+                self.committed = self.temporary.take();
+                Ok(())
+            }
+
+            fn sync_parent(&mut self, _committed_path: &[u8]) -> Result<(), StorageError> {
+                Ok(())
+            }
+
+            fn unlock(&mut self) -> Result<(), StorageError> {
+                if self.fail_unlock {
+                    return Err(StorageError::Unavailable);
+                }
+                self.locked = false;
+                Ok(())
+            }
+        }
+
+        let database = Database::parse(DATABASE).unwrap();
+        let mut storage = Storage {
+            committed: Some(DATABASE.to_vec()),
+            temporary: None,
+            locked: false,
+            fail_unlock: true,
+        };
+        let engine = PasswdEngine::new(PasswordPolicy::DEFAULT).unwrap();
+        assert_eq!(
+            engine.commit(&mut storage, b"db", b"tmp", &database),
+            Err(PasswdError::CommittedButUnlockFailed)
+        );
+        let (reloaded, state) = engine.recover(&mut storage, b"db", b"tmp").unwrap();
+        assert_eq!(state, RecoveryState::Current);
+        assert_eq!(reloaded, database);
+        storage.fail_unlock = false;
+        storage.unlock().unwrap();
     }
 }

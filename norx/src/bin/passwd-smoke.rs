@@ -14,10 +14,10 @@ use norx_userdb::{
 };
 use userspace::syscall;
 
-const HASH: &[u8] = b"$argon2id$v=19$m=65536,t=3,p=1$c2FsdFNhbXBsZQ$ZGlnaWVzdFNhbXBsZQ";
-const NEW_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$bmV3c2FsdFNhbXBsZQ$bmV3ZGlnaWVzdFNhbXBsZQ";
-const RESET_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$cmVzZXRzYW1wbGU$cmVzZXRkaWdlc3QxMjM=";
-const SEED: &[u8] = b"NORX-USERDB 1\nu:root:0:0:0:256:/root:/bin/nsh:$argon2id$v=19$m=65536,t=3,p=1$c2FsdFNhbXBsZQ$ZGlnaWVzdFNhbXBsZQ\nu:alice:1000:1000:0:0:/users/alice:/bin/nsh:$argon2id$v=19$m=65536,t=3,p=1$c2FsdFNhbXBsZQ$ZGlnaWVzdFNhbXBsZQ\ng:users:1000:alice\n";
+const HASH: &[u8] = b"$argon2id$v=19$m=65536,t=3,p=1$MDEyMzQ1Njc4OWFiY2RlZg$MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
+const NEW_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$bmV3LXNhbHQtdmFsdWUhIQ$bmV3LWRpZ2VzdC12YWx1ZS0wMTIzNDU2Nzg5YWJjZGU";
+const RESET_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$cmVzZXQtc2FsdC0xMjM0NQ$cmVzZXQtZGlnZXN0LTAxMjM0NTY3ODlhYmNkZWYwMTI";
+const SEED: &[u8] = b"NORX-USERDB 1\nu:root:0:0:0:256:/root:/bin/nsh:$argon2id$v=19$m=65536,t=3,p=1$MDEyMzQ1Njc4OWFiY2RlZg$MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY\nu:alice:1000:1000:0:0:/users/alice:/bin/nsh:$argon2id$v=19$m=65536,t=3,p=1$MDEyMzQ1Njc4OWFiY2RlZg$MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY\ng:users:1000:alice\n";
 
 #[panic_handler]
 fn panic(_info: &PanicInfo<'_>) -> ! {
@@ -58,6 +58,7 @@ struct MemoryStorage {
     committed: Option<Vec<u8>>,
     temporary: Option<Vec<u8>>,
     locked: bool,
+    fail_unlock: bool,
 }
 
 impl AtomicStorage for MemoryStorage {
@@ -100,6 +101,9 @@ impl AtomicStorage for MemoryStorage {
     }
 
     fn unlock(&mut self) -> Result<(), StorageError> {
+        if self.fail_unlock {
+            return Err(StorageError::Unavailable);
+        }
         self.locked = false;
         Ok(())
     }
@@ -227,6 +231,23 @@ fn run() -> bool {
             .commit(&mut storage, b"db", b"tmp", &database)
             .is_err()
         || !marker(b"PASSWD:ATOMIC_OK\n")
+    {
+        return false;
+    }
+    storage.fail_unlock = true;
+    if engine.commit(&mut storage, b"db", b"tmp", &database)
+        != Err(PasswdError::CommittedButUnlockFailed)
+        || !marker(b"PASSWD:COMMITTED_UNLOCK_REPORTED\n")
+    {
+        return false;
+    }
+    storage.fail_unlock = false;
+    if engine
+        .recover(&mut storage, b"db", b"tmp")
+        .map(|value| (value.0.serialize_for_storage(), value.1))
+        != Ok((database.serialize_for_storage(), RecoveryState::Current))
+        || !marker(b"PASSWD:COMMITTED_UNLOCK_RECONCILED\n")
+        || storage.unlock().is_err()
     {
         return false;
     }
